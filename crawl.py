@@ -92,4 +92,4 @@ if __name__ == '__main__':
         nextpage(driver=driver)
 
     print(df)
-    df.to_excel(f'./crawl_{search}.xlsx', encoding='utf-8', ignore_index = True)
+    df.to_excel(f'./data/crawl_{search}.xlsx', encoding='utf-8', ignore_index = True)

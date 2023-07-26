@@ -8,7 +8,10 @@ from selenium.webdriver.common.by import By
 import pandas as pd
 import numpy as np
 import csv
+import datetime
 
+import warnings
+from tqdm import tqdm
 '''
 &query= 검색어
 &sm=tab_opt
@@ -29,14 +32,14 @@ import csv
 '''
 
 def crawl_single_pages(driver):
-    data = pd.DataFrame()
-    bodys = ['//*[@id="content"]/article/section[1]', '//*[@id="newsct_article"]']
+    data = pd.DataFrame([], columns=['url','신문사','작성일자','제목','내용'])
+    bodys = ['//*[@id="content"]/article/section[1]', '//*[@id="newsct_article"]', '//*[@id="articeBody"]/text()']
     infogroups = driver.find_elements(By.CSS_SELECTOR, 'div.info_group')
 
     for i in infogroups:
         childs = i.find_elements(By.XPATH, '*')
 
-        current_press = childs[0].text
+        press = childs[0].text
 
         if len(childs) < 3:
             continue
@@ -44,22 +47,32 @@ def crawl_single_pages(driver):
             if childs[-1].text == '네이버뉴스':
                 childs[-1].click()
                 driver.switch_to.window(driver.window_handles[1])
-                current_url = driver.current_url
-                current_title = driver.title
-                # try:
-                #     current_date = driver.find_element(By.XPATH, '/html/body/div[4]/article/div[1]/header/p').text
-                # except:
-                #     current_date = driver.find_element(By.XPATH, '#ct > div.media_end_head.go_trans > div.media_end_head_info.nv_notrans > div.media_end_head_info_datestamp > div:nth-child(1) > span').text
+                d = {'url':['NaN'],'신문사':['NaN'],'작성일자':['NaN'],'제목':['NaN'],'내용':['NaN']}
+                d['url'] = [driver.current_url]
+                d['제목'] = [driver.title]
+                d['신문사'] = [press]
+                current_date = ['NaN']
+
+                dates = ['//*[@id="ct"]/div[1]/div[3]/div[1]/div/span', '//*[@id="ct"]/div[1]/div[3]/div[1]/div[2]/span', '//*[@id="content"]/div[1]/div/div[2]/span/em']
+
+                for j in dates:
+                    try:
+                        current_date.append(driver.find_element(By.XPATH, j).text)
+                    except:
+                        continue
+            
+                d['작성일자'] = [current_date[-1]]
                 
                 for j in bodys:
                     try:
                         current_contents = driver.find_element(By.XPATH, j).text
+                        d['내용'] = [str(current_contents).replace('\n', ' ')]
+
                     except:
                         continue
                 
-                current_contents = str(current_contents).replace('\n', ' ')
-                d = pd.Series([current_url, current_press, current_title, current_contents])
-                data = data.append(d, ignore_index=True)
+                d = pd.DataFrame(data=d)
+                data = data.append(d)
                 driver.close()
                 driver.switch_to.window(driver.window_handles[0])
 
@@ -70,26 +83,29 @@ def nextpage(driver):
     button.click()
 
 
-
 if __name__ == '__main__':
     options = webdriver.ChromeOptions()
+    warnings.simplefilter(action='ignore', category=FutureWarning)
     # options.add_argument('headless')
 
     driver = webdriver.Chrome()
-    driver.implicitly_wait(3)
+    driver.implicitly_wait(1)
 
-    df = pd.DataFrame([])
+    df = pd.DataFrame([], columns=['url','신문사','작성일자','제목','내용'])
 
     search = '인구소멸'
     url = f'https://search.naver.com/search.naver?where=news&sm=tab_jum&query={search}'
-    find_pages = 10
+    find_pages = 100
 
     driver.get(url)
 
-    for i in range(find_pages):
+    for i in tqdm(range((find_pages))):
         singlepage = crawl_single_pages(driver=driver)
-        df = df.append(singlepage, ignore_index = True)
+        df = df.append(singlepage)
         nextpage(driver=driver)
 
     print(df)
-    df.to_excel(f'./data/crawl_{search}.xlsx', encoding='utf-8', ignore_index = True)
+    now = datetime.datetime.now()
+    t = now.strftime('%Y-%m-%d')
+    filename = f'./data/crawl_{search}_{t}.xlsx'
+    df.to_excel(filename, encoding='utf-8')
